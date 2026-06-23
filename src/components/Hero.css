@@ -23,6 +23,47 @@
   color: #777;
 }
 
+.period-filter {
+  background: #fff;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-left: 4px solid #1b6e57;
+}
+
+.period-filter > div,
+.period-filter label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.period-filter-label,
+.period-filter label {
+  color: #777;
+  font-size: 0.82rem;
+}
+
+.period-filter strong {
+  color: #1b6e57;
+  font-size: 1.15rem;
+}
+
+.period-filter select {
+  min-width: 220px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  color: #2d3a35;
+  font-size: 0.9rem;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -252,6 +293,16 @@
   margin-bottom: 1rem;
 }
 
+.table-header h2 {
+  margin-bottom: 0.2rem;
+}
+
+.table-period {
+  margin: 0;
+  color: #777;
+  font-size: 0.85rem;
+}
+
 .table-filters {
   display: flex;
   gap: 0.5rem;
@@ -264,6 +315,13 @@
   border: 1px solid #ddd;
   border-radius: 8px;
   font-size: 0.9rem;
+}
+
+.table-filters .month-filter {
+  border-color: #1b6e57;
+  color: #1b6e57;
+  font-weight: 600;
+  min-width: 180px;
 }
 
 .table-wrapper {
@@ -379,6 +437,14 @@ tfoot td {
 @media (max-width: 600px) {
   .dash-container {
     padding: 1.5rem;
+  }
+  .period-filter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .period-filter select {
+    min-width: 0;
+    width: 100%;
   }
   .stats-grid {
     grid-template-columns: 1fr;

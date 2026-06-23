@@ -1,8 +1,24 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import './Hero.css';
 import { supabase } from '../lib/supabaseClient';
 
 const TIPOS_MADEIRA = ['Pinus', 'Eucalipto', 'Ipê', 'Cedro', 'Itaúba', 'Outra'];
+
+const formatarMes = (mesReferencia) => {
+  if (!mesReferencia) return 'Nenhum período disponível';
+  if (mesReferencia === 'todos') return 'Todo o período';
+
+  const [ano, mes] = mesReferencia.split('-').map(Number);
+  if (!ano || !mes) return mesReferencia;
+
+  const nomeMes = new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(Date.UTC(ano, mes - 1, 1)));
+
+  return nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+};
 
 // Converte string com vírgula/ponto em número, tratando corretamente o formato brasileiro
 const paraNumero = (valor) => {
@@ -29,7 +45,11 @@ const mapearRomaneio = (r) => {
   const valorMadeira = Number(r.valor_madeira) || 0;
   const valorFrete = Number(r.valor_frete) || 0;
   const comissaoPorM3 = Number(r.comissao_por_m3) || 0;
-  const comissaoValor = comissaoPorM3 * quantidade;
+  const temComissaoSalva = r.comissao_valor !== null && r.comissao_valor !== undefined;
+  const comissaoSalva = Number(r.comissao_valor);
+  const comissaoValor = temComissaoSalva && Number.isFinite(comissaoSalva)
+    ? comissaoSalva
+    : comissaoPorM3 * quantidade;
   const valorTotal = valorMadeira + valorFrete;
   const liquido = valorMadeira - comissaoValor;
 
@@ -68,6 +88,7 @@ const Hero = () => {
   const [busca, setBusca] = useState('');
   const [filtroMadeira, setFiltroMadeira] = useState('todas');
   const [filtroFornecedor, setFiltroFornecedor] = useState('todos');
+  const [filtroMes, setFiltroMes] = useState('');
   const [ordenacao, setOrdenacao] = useState('recente');
   const [erroBanco, setErroBanco] = useState(null);
 
@@ -88,7 +109,11 @@ const Hero = () => {
   }, []);
 
   useEffect(() => {
-    carregarRegistros();
+    const timer = setTimeout(() => {
+      carregarRegistros();
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [carregarRegistros]);
 
   const CAMPOS_NUMERICOS = ['quantidade', 'valorMadeira', 'valorFrete', 'comissaoPorM3'];
@@ -208,8 +233,25 @@ const Hero = () => {
     return unicos.sort();
   }, [registros]);
 
+  const mesesDisponiveis = useMemo(() => {
+    const meses = [...new Set(
+      registros
+        .map(r => r.data?.slice(0, 7))
+        .filter(mes => /^\d{4}-\d{2}$/.test(mes))
+    )];
+
+    return meses.sort((a, b) => b.localeCompare(a));
+  }, [registros]);
+
+  const mesSelecionado = filtroMes || mesesDisponiveis[0] || '';
+
+  const registrosDoPeriodo = useMemo(() => {
+    if (!mesSelecionado || mesSelecionado === 'todos') return registros;
+    return registros.filter(r => r.data?.slice(0, 7) === mesSelecionado);
+  }, [registros, mesSelecionado]);
+
   const registrosFiltrados = useMemo(() => {
-    let lista = [...registros];
+    let lista = [...registrosDoPeriodo];
 
     if (busca.trim()) {
       const termo = busca.trim().toLowerCase();
@@ -241,28 +283,28 @@ const Hero = () => {
     });
 
     return lista;
-  }, [registros, busca, filtroMadeira, filtroFornecedor, ordenacao]);
+  }, [registrosDoPeriodo, busca, filtroMadeira, filtroFornecedor, ordenacao]);
 
-  // ESTATÍSTICAS GERAIS — cada valor é somado uma única vez a partir dos registros
+  // ESTATÍSTICAS DO PERÍODO — cada valor é somado uma única vez
   const stats = useMemo(() => {
-    const totalMadeira = registros.reduce((a, r) => a + r.valorMadeira, 0);
-    const totalFrete = registros.reduce((a, r) => a + r.valorFrete, 0);
-    const totalComissao = registros.reduce((a, r) => a + r.comissaoValor, 0);
+    const totalMadeira = registrosDoPeriodo.reduce((a, r) => a + r.valorMadeira, 0);
+    const totalFrete = registrosDoPeriodo.reduce((a, r) => a + r.valorFrete, 0);
+    const totalComissao = registrosDoPeriodo.reduce((a, r) => a + r.comissaoValor, 0);
     const totalGeral = totalMadeira + totalFrete;
     const totalLiquido = totalMadeira - totalComissao;
-    const totalM3 = registros.reduce((a, r) => a + r.quantidade, 0);
-    const totalRomaneios = registros.length;
+    const totalM3 = registrosDoPeriodo.reduce((a, r) => a + r.quantidade, 0);
+    const totalRomaneios = registrosDoPeriodo.length;
     const precoMedioM3 = totalM3 > 0 ? totalMadeira / totalM3 : 0;
     const comissaoMediaM3 = totalM3 > 0 ? totalComissao / totalM3 : 0;
-    const placasUnicas = new Set(registros.map(r => r.placa)).size;
-    const fornecedoresUnicos = new Set(registros.map(r => r.fornecedor)).size;
+    const placasUnicas = new Set(registrosDoPeriodo.map(r => r.placa)).size;
+    const fornecedoresUnicos = new Set(registrosDoPeriodo.map(r => r.fornecedor)).size;
 
     return { totalMadeira, totalFrete, totalComissao, totalGeral, totalLiquido, totalM3, totalRomaneios, precoMedioM3, comissaoMediaM3, placasUnicas, fornecedoresUnicos };
-  }, [registros]);
+  }, [registrosDoPeriodo]);
 
   const rankingMadeiras = useMemo(() => {
     const mapa = {};
-    registros.forEach(r => {
+    registrosDoPeriodo.forEach(r => {
       if (!mapa[r.madeira]) mapa[r.madeira] = { quantidade: 0, valorMadeira: 0 };
       mapa[r.madeira].quantidade += r.quantidade;
       mapa[r.madeira].valorMadeira += r.valorMadeira;
@@ -270,11 +312,11 @@ const Hero = () => {
     return Object.entries(mapa)
       .map(([madeira, dados]) => ({ madeira, ...dados }))
       .sort((a, b) => b.valorMadeira - a.valorMadeira);
-  }, [registros]);
+  }, [registrosDoPeriodo]);
 
   const rankingFornecedores = useMemo(() => {
     const mapa = {};
-    registros.forEach(r => {
+    registrosDoPeriodo.forEach(r => {
       if (!mapa[r.fornecedor]) mapa[r.fornecedor] = { quantidade: 0, valorMadeira: 0, romaneios: 0 };
       mapa[r.fornecedor].quantidade += r.quantidade;
       mapa[r.fornecedor].valorMadeira += r.valorMadeira;
@@ -283,7 +325,7 @@ const Hero = () => {
     return Object.entries(mapa)
       .map(([fornecedor, dados]) => ({ fornecedor, ...dados }))
       .sort((a, b) => b.valorMadeira - a.valorMadeira);
-  }, [registros]);
+  }, [registrosDoPeriodo]);
 
   const maiorValorMadeira = rankingMadeiras[0]?.valorMadeira || 1;
   const maiorValorFornecedor = rankingFornecedores[0]?.valorMadeira || 1;
@@ -309,6 +351,27 @@ const Hero = () => {
         )}
       </header>
 
+      <section className='period-filter' aria-label='Período do painel'>
+        <div>
+          <span className='period-filter-label'>Período analisado</span>
+          <strong>{formatarMes(mesSelecionado)}</strong>
+        </div>
+        <label>
+          Escolher mês
+          <select
+            value={mesSelecionado}
+            onChange={(e) => setFiltroMes(e.target.value)}
+            disabled={mesesDisponiveis.length === 0}
+          >
+            {mesesDisponiveis.length === 0 && <option value="">Sem meses cadastrados</option>}
+            {mesesDisponiveis.map(mes => (
+              <option key={mes} value={mes}>{formatarMes(mes)}</option>
+            ))}
+            {mesesDisponiveis.length > 0 && <option value="todos">Todo o período</option>}
+          </select>
+        </label>
+      </section>
+
       <section className='stats-grid'>
         <div className='stat-card highlight'>
           <span className='stat-label'>Valor Total (Madeira + Frete)</span>
@@ -323,7 +386,7 @@ const Hero = () => {
           <span className='stat-value'>{formatarMoeda(stats.totalFrete)}</span>
         </div>
         <div className='stat-card warning'>
-          <span className='stat-label'>Total Comissões</span>
+          <span className='stat-label'>Comissões no período</span>
           <span className='stat-value'>{formatarMoeda(stats.totalComissao)}</span>
         </div>
         <div className='stat-card success'>
@@ -512,8 +575,24 @@ const Hero = () => {
 
       <section className='panel table-panel'>
         <div className='table-header'>
-          <h2>Romaneios Registrados</h2>
+          <div>
+            <h2>Romaneios Registrados</h2>
+            <p className='table-period'>Exibindo {formatarMes(mesSelecionado).toLowerCase()}</p>
+          </div>
           <div className='table-filters'>
+            <select
+              className='month-filter'
+              value={mesSelecionado}
+              onChange={(e) => setFiltroMes(e.target.value)}
+              disabled={mesesDisponiveis.length === 0}
+              aria-label='Filtrar romaneios por mês'
+            >
+              {mesesDisponiveis.length === 0 && <option value="">Sem meses cadastrados</option>}
+              {mesesDisponiveis.map(mes => (
+                <option key={mes} value={mes}>{formatarMes(mes)}</option>
+              ))}
+              {mesesDisponiveis.length > 0 && <option value="todos">Todo o período</option>}
+            </select>
             <input
               type="text"
               placeholder="Buscar por romaneio, placa, cliente, fornecedor ou madeira..."
